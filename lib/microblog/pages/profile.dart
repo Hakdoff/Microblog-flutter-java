@@ -1,8 +1,13 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_java_crud/microblog/model/post_model.dart';
 import 'package:flutter_java_crud/microblog/services/post_service.dart';
 import 'package:flutter_java_crud/register/user/service.dart';
 import 'package:flutter_java_crud/register/user/user_model.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -22,12 +27,16 @@ class _ProfilePageState extends State<ProfilePage> {
   Service service = Service();
   List<PostModel> posts = [];
   List<UserModel> users = [];
+  String? profilePictureUrl;
+  final ImagePicker _picker = ImagePicker();
+  Uint8List? _profilePictureBytes;
 
   @override
   void initState() {
     super.initState();
     _fetchCurrentUserPosts();
     _fetchUsers();
+    _fetchProfilePicture();
   }
 
   Future<int?> _getCurrentUserId() async {
@@ -79,6 +88,43 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _fetchProfilePicture() async {
+    int? userId = await _getCurrentUserId();
+    if (userId != null) {
+      String? fetchedUrl = await postService.getProfilePicture(userId);
+      setState(() {
+        profilePictureUrl = fetchedUrl != null
+            ? "http://localhost:8080/profilePictures/$userId"
+            : null;
+        print("Profile picture URL fetched: $profilePictureUrl");
+      });
+    }
+  }
+
+  Future<void> _uploadProfilePicture() async {
+    int? userId = await _getCurrentUserId();
+    if (userId != null) {
+      final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
+        Uint8List fileBytes = await pickedFile.readAsBytes();
+        String? uploadedFilename = await postService.uploadProfilePicture(
+            userId, fileBytes, pickedFile.name);
+        if (uploadedFilename != null) {
+          setState(() {
+            profilePictureUrl =
+                "http://localhost:8080/profilePictures/$uploadedFilename";
+            _profilePictureBytes = fileBytes;
+          });
+          print("Profile picture updated $profilePictureUrl");
+        } else {
+          print("Error uploading");
+        }
+      } else {
+        print("No file selected");
+      }
+    }
+  }
+
   DateTime parseDateTime(String dateTimeString) {
     if (dateTimeString == null || dateTimeString.isEmpty) {
       return DateTime.now();
@@ -89,6 +135,48 @@ class _ProfilePageState extends State<ProfilePage> {
       print("Error parsing date time: $e");
       return DateTime.now(); // Fallback
     }
+  }
+
+  void _showEditDialog(PostModel post) {
+    TextEditingController editContoller =
+        TextEditingController(text: post.content);
+
+    showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+              title: const Text("Edit post"),
+              content: TextField(
+                controller: editContoller,
+                decoration:
+                    const InputDecoration(hintText: 'Edit post content'),
+                maxLines: 1,
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text("Cancel"),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+                TextButton(
+                  child: const Text('Save'),
+                  onPressed: () async {
+                    String response = await postService.updatePost(
+                        post.id, editContoller.text);
+                    Navigator.of(context).pop();
+                    print(response);
+                    _fetchPosts();
+                  },
+                )
+              ]);
+        });
+  }
+
+  void _deletePost(int postId) async {
+    String response = await postService.deletePost(postId);
+    print(response);
+    _fetchPosts();
   }
 
   @override
@@ -104,6 +192,38 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               children: [
                 const SizedBox(height: 10),
+                Column(
+                  children: [
+                    Center(
+                      child: profilePictureUrl != null
+                          ? _profilePictureBytes != null
+                              ? Image.memory(
+                                  _profilePictureBytes!,
+                                  height: 200,
+                                  width: 200,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(Icons.error);
+                                  },
+                                )
+                              : Image.network(
+                                  profilePictureUrl!,
+                                  height: 200,
+                                  width: 200,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(Icons.error);
+                                  },
+                                )
+                          : const CircularProgressIndicator(), // Show a loading indicator while fetching
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      onPressed:
+                          _uploadProfilePicture, // Function to upload new profile picture
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Edit Profile Picture'),
+                    ),
+                  ],
+                ),
                 Form(
                   key: _formKey,
                   child: Column(
@@ -166,14 +286,28 @@ class _ProfilePageState extends State<ProfilePage> {
                           children: [
                             Row(
                               children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(1000),
-                                  child: const Image(
-                                    height: 30,
-                                    width: 30,
-                                    image: NetworkImage(
-                                        'https://flutter.github.io/assets-for-api-docs/assets/widgets/owl.jpg'),
-                                  ),
+                                Center(
+                                  child: profilePictureUrl != null
+                                      ? _profilePictureBytes != null
+                                          ? Image.memory(
+                                              _profilePictureBytes!,
+                                              height: 30,
+                                              width: 30,
+                                              errorBuilder:
+                                                  (context, error, stackTrace) {
+                                                return const Icon(Icons.error);
+                                              },
+                                            )
+                                          : Image.network(
+                                              profilePictureUrl!,
+                                              height: 30,
+                                              width: 30,
+                                              errorBuilder:
+                                                  (context, error, stackTrace) {
+                                                return const Icon(Icons.error);
+                                              },
+                                            )
+                                      : const CircularProgressIndicator(), // Show a loading indicator while fetching
                                 ),
                                 Padding(
                                   padding: const EdgeInsets.all(8.0),
@@ -189,6 +323,23 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ],
                                   ),
                                 ),
+                                const Spacer(),
+                                PopupMenuButton<String>(
+                                  onSelected: (value) {
+                                    if (value == 'Edit') {
+                                      _showEditDialog(post);
+                                    } else if (value == 'Delete') {
+                                      _deletePost(post.id);
+                                    }
+                                  },
+                                  itemBuilder: (BuildContext context) {
+                                    return {'Edit', 'Delete'}
+                                        .map((String choice) {
+                                      return PopupMenuItem<String>(
+                                          value: choice, child: Text(choice));
+                                    }).toList();
+                                  },
+                                )
                               ],
                             ),
                             Align(

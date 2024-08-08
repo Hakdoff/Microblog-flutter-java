@@ -83,4 +83,17 @@ class Service {
       throw Exception('Failed to load users');
     }
   }
+
+  Future<String?> getProfilePicture(int userId) async {
+    final response = await http
+        .get(Uri.parse("http://localhost:8080/profilePictures/$userId"));
+    if (response.statusCode == 200) {
+      final url = response.body;
+      print('Profile picture URL fetched: $url'); // Debug print
+      return url;
+    } else {
+      print('Failed to fetch profile picture URL: ${response.statusCode}');
+      return null;
+    }
+  }
 }
