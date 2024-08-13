@@ -29,18 +29,42 @@ class Service {
 
     try {
       var response = await http.post(uri, headers: headers, body: body);
+
+      // Print the response status code and body for debugging
+      print('Response Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        final userId = responseData['userId'];
 
-        // Save user ID to SharedPreferences
+        // Print the parsed response data
+        print('Parsed Response Data: $responseData');
+
+        final userId = responseData['userId'];
+        final token = responseData['token'];
+
+        // Print the userId and token to check for null values
+        print('User ID: $userId');
+        print('Token: $token');
+
+        if (userId == null || token == null || token.isEmpty) {
+          // If userId or token is null, return an error message
+          print('Error: userId or token is null');
+          return 'Invalid credentials';
+        }
+
+        // Save user ID and token to SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('userId', userId);
+        await prefs.setString('token', token);
+
         return "Login Successful";
       } else {
         return 'Invalid credentials';
       }
     } catch (e) {
+      // Print the error to see what's causing the issue
+      print('Error: ${e.toString()}');
       return 'Error: ${e.toString()}';
     }
   }
@@ -89,7 +113,7 @@ class Service {
         .get(Uri.parse("http://localhost:8080/profilePictures/$userId"));
     if (response.statusCode == 200) {
       final url = response.body;
-      print('Profile picture URL fetched: $url'); // Debug print
+      // print('Profile picture URL fetched: $url'); // Debug print
       return url;
     } else {
       print('Failed to fetch profile picture URL: ${response.statusCode}');

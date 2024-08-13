@@ -1,5 +1,8 @@
+import 'dart:developer';
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_java_crud/microblog/model/post_model.dart';
 import 'package:flutter_java_crud/microblog/pages/profile.dart';
@@ -19,13 +22,19 @@ class MicroBlog extends StatefulWidget {
 }
 
 class _MicroBlogState extends State<MicroBlog> {
-  final _formkey = GlobalKey<FormState>();
+  final formKey = GlobalKey<FormState>();
   TextEditingController postController = TextEditingController();
   PostService postService = PostService();
   Service service = Service();
   List<PostModel> posts = [];
   List<UserModel> users = [];
   Map<int, String?> profilePictureUrls = {};
+  File? _selectedImage;
+  String? imageUrl;
+  Uint8List? _imageBytes;
+  Map<int, String?> imageUrls = {};
+  final ImagePicker _picker = ImagePicker();
+  Uint8List? _selectedPostImageBytes;
 
   @override
   void initState() {
@@ -49,7 +58,8 @@ class _MicroBlogState extends State<MicroBlog> {
           ..sort((a, b) =>
               parseDateTime(b.createdAt).compareTo(parseDateTime(a.createdAt)));
       });
-      print('Posts fetched: $posts');
+      print('Fetching image from URL: $imageUrl');
+      // print('Posts fetched: $posts');
     } catch (e) {
       print("Error fetching posts: $e");
     }
@@ -68,6 +78,16 @@ class _MicroBlogState extends State<MicroBlog> {
     }
   }
 
+  Future<void> _pickPostImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
+      setState(() {
+        _selectedPostImageBytes = bytes;
+      });
+    }
+  }
+
   Future<void> _fetchAllProfilePictures() async {
     for (var user in users) {
       String? fetchedUrl = await postService.getProfilePicture(user.id);
@@ -80,7 +100,7 @@ class _MicroBlogState extends State<MicroBlog> {
   }
 
   DateTime parseDateTime(String dateTimeString) {
-    if (dateTimeString == null || dateTimeString.isEmpty) {
+    if (dateTimeString.isEmpty) {
       return DateTime.now();
     }
     return DateTime.parse(dateTimeString);
@@ -113,8 +133,10 @@ class _MicroBlogState extends State<MicroBlog> {
                   onPressed: () async {
                     String response = await postService.updatePost(
                         post.id, editContoller.text);
-                    Navigator.of(context).pop();
-                    print(response);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                    }
+                    log(response);
                     _fetchPosts();
                   },
                 )
@@ -177,36 +199,59 @@ class _MicroBlogState extends State<MicroBlog> {
           child: Column(
             children: [
               Form(
-                  key: _formkey,
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: postController,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          hintText: 'Enter Content',
-                        ),
+                key: formKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: postController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: 'Enter Content',
                       ),
-                      const SizedBox(
-                        height: 10,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter some content';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      onPressed: _pickPostImage,
+                      icon: const Icon(Icons.image),
+                      label: const Text('Add Image to Post'),
+                    ),
+                    if (_selectedPostImageBytes != null)
+                      Image.memory(
+                        _selectedPostImageBytes!,
+                        height: 100,
+                        width: 100,
+                        fit: BoxFit.cover,
                       ),
-                      ElevatedButton(
-                        onPressed: () async {
-                          if (_formkey.currentState?.validate() == true) {
-                            int? userId = await _getCurrentUserId();
-                            if (userId != null) {
-                              String response = await postService.createPost(
-                                postController.text,
-                                userId,
-                              );
-                              postController.clear();
-                            }
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (formKey.currentState?.validate() == true) {
+                          int? userId = await _getCurrentUserId();
+                          if (userId != null) {
+                            await postService.createPost(
+                              postController.text,
+                              userId,
+                              imageBytes: _selectedPostImageBytes,
+                            );
+                            postController.clear();
+                            setState(() {
+                              _selectedPostImageBytes = null;
+                            });
+                            _fetchPosts();
                           }
-                        },
-                        child: const Text('Post'),
-                      )
-                    ],
-                  )),
+                        }
+                      },
+                      child: const Text('Post'),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(
                 height: 10,
               ),
@@ -241,8 +286,8 @@ class _MicroBlogState extends State<MicroBlog> {
                                 height: 30,
                                 width: 30,
                                 errorBuilder: (context, error, stackTrace) {
-                                  print(
-                                      "Error loading image: $error"); // Debug statement
+                                  // print(
+                                  //     "Error loading image: $error"); // Debug statement
                                   return const Icon(Icons.error);
                                 },
                                 loadingBuilder: (context, child, progress) {
@@ -251,7 +296,7 @@ class _MicroBlogState extends State<MicroBlog> {
                                   } else {
                                     print(
                                         "Loading image..."); // Debug statement
-                                    return Center(
+                                    return const Center(
                                         child: CircularProgressIndicator());
                                   }
                                 },
@@ -288,6 +333,20 @@ class _MicroBlogState extends State<MicroBlog> {
                               )
                             ],
                           ),
+                          if (post.imageUrl != null)
+                            CachedNetworkImage(
+                              imageUrl: 'http://localhost:8080/post/${post.id}',
+                              placeholder: (context, url) =>
+                                  const CircularProgressIndicator(),
+                              errorWidget: (context, url, error) {
+                                // Print the error details and URL
+                                print('Error loading image from URL: $url');
+                                print('Error details: $error');
+
+                                // Return the default error icon
+                                return const Icon(Icons.error);
+                              },
+                            ),
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text(

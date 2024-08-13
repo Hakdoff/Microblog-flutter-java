@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
-
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_java_crud/microblog/model/post_model.dart';
 import 'package:flutter_java_crud/microblog/services/post_service.dart';
 import 'package:flutter_java_crud/register/user/service.dart';
@@ -10,6 +9,7 @@ import 'package:flutter_java_crud/register/user/user_model.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:http/http.dart' as http;
 
 class ProfilePage extends StatefulWidget {
   final int userId;
@@ -30,6 +30,9 @@ class _ProfilePageState extends State<ProfilePage> {
   String? profilePictureUrl;
   final ImagePicker _picker = ImagePicker();
   Uint8List? _profilePictureBytes;
+  File? _selectedImage;
+  Uint8List? _selectedPostImageBytes;
+  Map<int, Uint8List?> imageBytesMap = {};
 
   @override
   void initState() {
@@ -94,6 +97,7 @@ class _ProfilePageState extends State<ProfilePage> {
       String? fetchedUrl = await postService.getProfilePicture(userId);
       setState(() {
         profilePictureUrl = fetchedUrl != null
+            // ? "http://192.168.0.164:8080/profilePictures/$userId"
             ? "http://localhost:8080/profilePictures/$userId"
             : null;
         print("Profile picture URL fetched: $profilePictureUrl");
@@ -112,7 +116,7 @@ class _ProfilePageState extends State<ProfilePage> {
         if (uploadedFilename != null) {
           setState(() {
             profilePictureUrl =
-                "http://localhost:8080/profilePictures/$uploadedFilename";
+                "http://192.168.0.164:8080/profilePictures/$uploadedFilename";
             _profilePictureBytes = fileBytes;
           });
           print("Profile picture updated $profilePictureUrl");
@@ -122,6 +126,16 @@ class _ProfilePageState extends State<ProfilePage> {
       } else {
         print("No file selected");
       }
+    }
+  }
+
+  Future<void> _pickPostImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
+      setState(() {
+        _selectedPostImageBytes = bytes;
+      });
     }
   }
 
@@ -171,6 +185,16 @@ class _ProfilePageState extends State<ProfilePage> {
                 )
               ]);
         });
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+      });
+    }
   }
 
   void _deletePost(int postId) async {
@@ -242,6 +266,19 @@ class _ProfilePageState extends State<ProfilePage> {
                         },
                       ),
                       const SizedBox(height: 10),
+                      ElevatedButton.icon(
+                        onPressed: _pickPostImage,
+                        icon: const Icon(Icons.image),
+                        label: const Text('Add Image to Post'),
+                      ),
+                      if (_selectedPostImageBytes != null)
+                        Image.memory(
+                          _selectedPostImageBytes!,
+                          height: 100,
+                          width: 100,
+                          fit: BoxFit.cover,
+                        ),
+                      const SizedBox(height: 10),
                       ElevatedButton(
                         onPressed: () async {
                           if (_formKey.currentState?.validate() == true) {
@@ -250,9 +287,13 @@ class _ProfilePageState extends State<ProfilePage> {
                               await postService.createPost(
                                 postController.text,
                                 userId,
+                                imageBytes: _selectedPostImageBytes,
                               );
                               postController.clear();
-                              _fetchPosts();
+                              setState(() {
+                                _selectedPostImageBytes = null;
+                              });
+                              _fetchCurrentUserPosts();
                             }
                           }
                         },
@@ -342,6 +383,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                 )
                               ],
                             ),
+                            if (post.imageUrl != null)
+                              CachedNetworkImage(
+                                imageUrl:
+                                    'http://localhost:8080/post/${post.id}',
+                                placeholder: (context, url) =>
+                                    const CircularProgressIndicator(),
+                                errorWidget: (context, url, error) {
+                                  // Print the error details and URL
+                                  print('Error loading image from URL: $url');
+                                  print('Error details: $error');
+
+                                  // Return the default error icon
+                                  return const Icon(Icons.error);
+                                },
+                              ),
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(

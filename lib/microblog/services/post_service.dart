@@ -1,27 +1,36 @@
 import 'dart:convert';
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_java_crud/microblog/model/post_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 class PostService {
-  Future<String> createPost(String content, int userId) async {
-    final response = await http.post(
-      Uri.parse("http://localhost:8080/post"),
-      headers: <String, String>{
-        'Content-Type': "application/json; charset=UTF-8",
-      },
-      body: jsonEncode(<String, dynamic>{'content': content, 'userId': userId}),
-    );
+  Future<String> createPost(String content, int userId,
+      {Uint8List? imageBytes}) async {
+    final request =
+        http.MultipartRequest('POST', Uri.parse("http://localhost:8080/post"));
+
+    request.fields['content'] = content;
+    request.fields['userId'] = userId.toString();
+
+    if (imageBytes != null) {
+      request.files.add(http.MultipartFile.fromBytes('file', imageBytes,
+          filename: 'post_image.jpg', contentType: MediaType('image', 'jpeg')));
+    }
+
+    final response = await request.send();
+    final responseBody = await response.stream.bytesToString();
 
     if (response.statusCode == 200) {
-      return "Post successfully created";
+      print('Post successfully created with image. Response: $responseBody');
+      return responseBody;
     } else if (response.statusCode == 400) {
       return 'Unauthorized: Invalid user';
     } else {
-      return 'Error: $response.reasonPhrase';
+      print('Upload failed with status: ${response.statusCode}');
+      print('Response: $responseBody');
+      return 'Error: ${response.reasonPhrase}';
     }
   }
 
@@ -85,7 +94,7 @@ class PostService {
         .get(Uri.parse("http://localhost:8080/profilePictures/$userId"));
     if (response.statusCode == 200) {
       final url = response.body;
-      print('Profile picture URL fetched: $url'); // Debug print
+      // print('Profile picture URL fetched: $url'); // Debug print
       return url;
     } else {
       print('Failed to fetch profile picture URL: ${response.statusCode}');

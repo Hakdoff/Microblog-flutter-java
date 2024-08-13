@@ -56,8 +56,7 @@ class _LoginPageState extends State<LoginPage> {
                     emailController.text,
                     passwordController.text,
                   );
-                  if (response != "Login Failed") {
-                    await service.saveToken(response);
+                  if (response == "Login Successful") {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
