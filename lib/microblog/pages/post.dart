@@ -1,15 +1,17 @@
 import 'dart:developer';
-import 'dart:io';
 import 'dart:typed_data';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_java_crud/currency/components/antToany.dart';
+import 'package:flutter_java_crud/currency/presentation/currency.dart';
+import 'package:flutter_java_crud/gemini/pages/gemini.dart';
 import 'package:flutter_java_crud/microblog/model/post_model.dart';
 import 'package:flutter_java_crud/microblog/pages/profile.dart';
 import 'package:flutter_java_crud/microblog/services/post_service.dart';
 import 'package:flutter_java_crud/register/user/login_page.dart';
 import 'package:flutter_java_crud/register/user/service.dart';
 import 'package:flutter_java_crud/register/user/user_model.dart';
+import 'package:flutter_java_crud/rick_n_morty/rickmorty.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -29,9 +31,7 @@ class _MicroBlogState extends State<MicroBlog> {
   List<PostModel> posts = [];
   List<UserModel> users = [];
   Map<int, String?> profilePictureUrls = {};
-  File? _selectedImage;
   String? imageUrl;
-  Uint8List? _imageBytes;
   Map<int, String?> imageUrls = {};
   final ImagePicker _picker = ImagePicker();
   Uint8List? _selectedPostImageBytes;
@@ -46,7 +46,6 @@ class _MicroBlogState extends State<MicroBlog> {
   Future<int?> _getCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('userId');
-    print('Retrieved User ID: $userId'); // Debug statement
     return userId;
   }
 
@@ -54,14 +53,12 @@ class _MicroBlogState extends State<MicroBlog> {
     try {
       List<PostModel> fetchPosts = await postService.getallPosts();
       setState(() {
-        posts = fetchPosts.where((post) => post.createdAt != null).toList()
+        posts = fetchPosts.where((post) => post.createdAt.isNotEmpty).toList()
           ..sort((a, b) =>
               parseDateTime(b.createdAt).compareTo(parseDateTime(a.createdAt)));
       });
-      print('Fetching image from URL: $imageUrl');
-      // print('Posts fetched: $posts');
     } catch (e) {
-      print("Error fetching posts: $e");
+      log("Error fetching posts: $e");
     }
   }
 
@@ -71,10 +68,9 @@ class _MicroBlogState extends State<MicroBlog> {
       setState(() {
         users = fetchedUsers;
       });
-      print('Users fetched: $users');
       await _fetchAllProfilePictures();
     } catch (e) {
-      print("Error fetching users: $e");
+      log("Error fetching users: $e");
     }
   }
 
@@ -145,8 +141,7 @@ class _MicroBlogState extends State<MicroBlog> {
   }
 
   void _deletePost(int postId) async {
-    String response = await postService.deletePost(postId);
-    print(response);
+    await postService.deletePost(postId);
     _fetchPosts();
   }
 
@@ -171,12 +166,42 @@ class _MicroBlogState extends State<MicroBlog> {
                 final prefs = await SharedPreferences.getInstance();
                 final userId = prefs.getInt('userId');
                 if (userId != null) {
-                  Navigator.push(
+                  if (context.mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => ProfilePage(userId: userId)),
+                    );
+                  }
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.money),
+              title: const Text('Currency Calculator'),
+              onTap: () async {
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (context) => const Currency()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.computer_outlined),
+              title: const Text('Gemini AI'),
+              onTap: () async {
+                Navigator.push(
+                    context, MaterialPageRoute(builder: (context) => Gemini()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.api),
+              title: const Text('Rick and Morty API'),
+              onTap: () async {
+                Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => ProfilePage(userId: userId)),
-                  );
-                }
+                        builder: (context) => const RickAndMorty(
+                              title: 'Rick n Morty',
+                            )));
               },
             ),
             ListTile(
@@ -184,10 +209,13 @@ class _MicroBlogState extends State<MicroBlog> {
               title: const Text('Logout'),
               onTap: () async {
                 await service.logoutUser();
-                Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LoginPage()),
-                    (route) => false);
+                if (context.mounted) {
+                  Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const LoginPage()),
+                      (route) => false);
+                }
               },
             ),
           ],
@@ -294,8 +322,6 @@ class _MicroBlogState extends State<MicroBlog> {
                                   if (progress == null) {
                                     return child;
                                   } else {
-                                    print(
-                                        "Loading image..."); // Debug statement
                                     return const Center(
                                         child: CircularProgressIndicator());
                                   }
@@ -333,20 +359,6 @@ class _MicroBlogState extends State<MicroBlog> {
                               )
                             ],
                           ),
-                          if (post.imageUrl != null)
-                            CachedNetworkImage(
-                              imageUrl: 'http://localhost:8080/post/${post.id}',
-                              placeholder: (context, url) =>
-                                  const CircularProgressIndicator(),
-                              errorWidget: (context, url, error) {
-                                // Print the error details and URL
-                                print('Error loading image from URL: $url');
-                                print('Error details: $error');
-
-                                // Return the default error icon
-                                return const Icon(Icons.error);
-                              },
-                            ),
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
@@ -354,6 +366,15 @@ class _MicroBlogState extends State<MicroBlog> {
                               textAlign: TextAlign.start,
                             ),
                           ),
+                          if (post.imageUrl != null)
+                            CachedNetworkImage(
+                              imageUrl: 'http://localhost:8080/post/${post.id}',
+                              placeholder: (context, url) =>
+                                  const CircularProgressIndicator(),
+                              errorWidget: (context, url, error) {
+                                return const Icon(Icons.error);
+                              },
+                            ),
                           const Divider(),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 50.0),

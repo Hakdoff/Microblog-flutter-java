@@ -7,7 +7,7 @@ import 'user_model.dart';
 class Service {
   Future<String> saveUser(String name, String email, String password) async {
     final response = await http.post(
-      Uri.parse("http://localhost:8080/register"),
+      Uri.parse("http://192.168.0.164:8080/register"),
       headers: <String, String>{
         'Content-Type': "application/json; charset=UTF-8",
       },
@@ -22,7 +22,7 @@ class Service {
   }
 
   Future<String> loginUser(String email, String password) async {
-    var uri = Uri.parse("http://localhost:8080/login");
+    var uri = Uri.parse("http://192.168.0.164:8080/login");
     Map<String, String> headers = {"Content-Type": "application/json"};
     Map<String, String> data = {'email': email, 'password': password};
     var body = json.encode(data);
@@ -57,6 +57,7 @@ class Service {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('userId', userId);
         await prefs.setString('token', token);
+        print('${token}');
 
         return "Login Successful";
       } else {
@@ -98,7 +99,7 @@ class Service {
   }
 
   Future<List<UserModel>> getAllUsers() async {
-    var uri = Uri.parse("http://localhost:8080/users");
+    var uri = Uri.parse("http://192.168.0.164:8080/users");
     var response = await http.get(uri);
     if (response.statusCode == 200) {
       List<dynamic> jsonResponse = json.decode(response.body);
@@ -110,7 +111,7 @@ class Service {
 
   Future<String?> getProfilePicture(int userId) async {
     final response = await http
-        .get(Uri.parse("http://localhost:8080/profilePictures/$userId"));
+        .get(Uri.parse("http://192.168.0.164:8080/profilePictures/$userId"));
     if (response.statusCode == 200) {
       final url = response.body;
       // print('Profile picture URL fetched: $url'); // Debug print

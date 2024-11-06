@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:developer';
 import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +9,6 @@ import 'package:flutter_java_crud/register/user/user_model.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:http/http.dart' as http;
 
 class ProfilePage extends StatefulWidget {
   final int userId;
@@ -30,7 +29,6 @@ class _ProfilePageState extends State<ProfilePage> {
   String? profilePictureUrl;
   final ImagePicker _picker = ImagePicker();
   Uint8List? _profilePictureBytes;
-  File? _selectedImage;
   Uint8List? _selectedPostImageBytes;
   Map<int, Uint8List?> imageBytesMap = {};
 
@@ -45,7 +43,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<int?> _getCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('userId');
-    print('userid $userId');
     return userId;
   }
 
@@ -56,14 +53,15 @@ class _ProfilePageState extends State<ProfilePage> {
         List<PostModel> fetchedPosts =
             await postService.getPostsByUserId(userId);
         setState(() {
-          posts = fetchedPosts.where((post) => post.createdAt != null).toList()
+          posts = fetchedPosts
+              .where((post) => post.createdAt.isNotEmpty)
+              .toList()
             ..sort((a, b) => parseDateTime(b.createdAt)
                 .compareTo(parseDateTime(a.createdAt)));
         });
-        print('Posts fetched $posts');
       }
     } catch (e) {
-      print("Error $e");
+      log("Error $e");
     }
   }
 
@@ -73,9 +71,8 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         users = fetchedUsers;
       });
-      print("users $users");
     } catch (e) {
-      print("Error $e");
+      log("Error $e");
     }
   }
 
@@ -85,9 +82,8 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         posts = fetchPosts;
       });
-      print('Posts fetched: $posts');
     } catch (e) {
-      print("Error fetching posts: $e");
+      log("Error fetching posts: $e");
     }
   }
 
@@ -100,7 +96,6 @@ class _ProfilePageState extends State<ProfilePage> {
             // ? "http://192.168.0.164:8080/profilePictures/$userId"
             ? "http://localhost:8080/profilePictures/$userId"
             : null;
-        print("Profile picture URL fetched: $profilePictureUrl");
       });
     }
   }
@@ -119,12 +114,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 "http://192.168.0.164:8080/profilePictures/$uploadedFilename";
             _profilePictureBytes = fileBytes;
           });
-          print("Profile picture updated $profilePictureUrl");
-        } else {
-          print("Error uploading");
         }
-      } else {
-        print("No file selected");
       }
     }
   }
@@ -140,13 +130,12 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   DateTime parseDateTime(String dateTimeString) {
-    if (dateTimeString == null || dateTimeString.isEmpty) {
+    if (dateTimeString.isEmpty) {
       return DateTime.now();
     }
     try {
       return DateTime.parse(dateTimeString);
     } catch (e) {
-      print("Error parsing date time: $e");
       return DateTime.now(); // Fallback
     }
   }
@@ -176,10 +165,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 TextButton(
                   child: const Text('Save'),
                   onPressed: () async {
-                    String response = await postService.updatePost(
-                        post.id, editContoller.text);
-                    Navigator.of(context).pop();
-                    print(response);
+                    await postService.updatePost(post.id, editContoller.text);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                    }
                     _fetchPosts();
                   },
                 )
@@ -187,19 +176,8 @@ class _ProfilePageState extends State<ProfilePage> {
         });
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _selectedImage = File(pickedFile.path);
-      });
-    }
-  }
-
   void _deletePost(int postId) async {
-    String response = await postService.deletePost(postId);
-    print(response);
+    await postService.deletePost(postId);
     _fetchPosts();
   }
 
@@ -359,8 +337,12 @@ class _ProfilePageState extends State<ProfilePage> {
                                       Text(
                                         username,
                                         textAlign: TextAlign.start,
+                                        style: const TextStyle(fontSize: 15),
                                       ),
-                                      Text(timeago.format(createdAt)),
+                                      Text(
+                                        timeago.format(createdAt),
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -383,21 +365,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                 )
                               ],
                             ),
-                            if (post.imageUrl != null)
-                              CachedNetworkImage(
-                                imageUrl:
-                                    'http://localhost:8080/post/${post.id}',
-                                placeholder: (context, url) =>
-                                    const CircularProgressIndicator(),
-                                errorWidget: (context, url, error) {
-                                  // Print the error details and URL
-                                  print('Error loading image from URL: $url');
-                                  print('Error details: $error');
-
-                                  // Return the default error icon
-                                  return const Icon(Icons.error);
-                                },
-                              ),
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
@@ -405,6 +372,19 @@ class _ProfilePageState extends State<ProfilePage> {
                                 textAlign: TextAlign.start,
                               ),
                             ),
+                            const SizedBox(
+                              height: 5,
+                            ),
+                            if (post.imageUrl != null)
+                              CachedNetworkImage(
+                                imageUrl:
+                                    'http://localhost:8080/post/${post.id}',
+                                placeholder: (context, url) =>
+                                    const CircularProgressIndicator(),
+                                errorWidget: (context, url, error) {
+                                  return const Icon(Icons.error);
+                                },
+                              ),
                             const Divider(),
                             const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 50.0),
